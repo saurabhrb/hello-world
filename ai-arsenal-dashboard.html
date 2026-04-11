@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Arsenal Eval Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --panel-2: #1a2740;
+      --line: #2f3f63;
+      --text: #e6ecff;
+      --muted: #93a4cf;
+      --accent: #f6d34c;
+      --danger: #ff6b6b;
+      --ok: #7ee787;
+      --chip: #24385f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at 20% 20%, #1b2e52 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .app {
+      max-width: 1400px;
+      margin: 20px auto;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .topbar, .panel {
+      background: linear-gradient(180deg, #18233b 0%, #121a2b 100%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.35);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+    }
+    .brand { font-weight: 700; letter-spacing: .04em; }
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.active { background: var(--accent); color: #111; border-color: #d4b332; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.1fr 1.1fr .8fr;
+      gap: 14px;
+    }
+    .panel { padding: 14px; }
+    h2,h3,h4 { margin: 0 0 8px; }
+    .sub { color: var(--muted); font-size: .92rem; margin-bottom: 10px; }
+    .slots {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+    }
+    .slot {
+      border: 1px solid var(--line);
+      background: #101a2d;
+      padding: 10px;
+      border-radius: 10px;
+    }
+    .slot select { width: 100%; margin-top: 6px; background: #0e1728; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+    .stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+    .stat { background: #10192b; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .bar { height: 7px; background: #0a1323; border-radius: 999px; overflow: hidden; margin-top: 6px; border: 1px solid #263a61; }
+    .bar > span { display: block; height: 100%; background: linear-gradient(90deg,#62a0ff,#7ee787); }
+    .chipset { display:flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: .8rem; background: var(--chip); border: 1px solid var(--line); padding: 4px 8px; border-radius: 999px; }
+    .warn { color: var(--danger); font-weight: 600; }
+    .ok { color: var(--ok); font-weight: 600; }
+    .view { display:none; }
+    .view.active { display:block; }
+    table { width:100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px; text-align:left; }
+    canvas { width: 100%; background: #0d1728; border: 1px solid var(--line); border-radius: 8px; }
+    .legend { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+    .scenario { margin-top: 8px; border: 1px dashed #486298; border-radius: 8px; padding: 10px; background:#0f182a; }
+    .small { font-size: .86rem; color: var(--muted); }
+    @media (max-width: 1200px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div>
+      <div class="brand">TACTICAL ↔ AI ARSENAL EVAL</div>
+      <div class="small">Gunsmith-style UI + data science view for ablation and cascading impact.</div>
+    </div>
+    <div>
+      <button class="btn active" id="gunsmithBtn">User View</button>
+      <button class="btn" id="scienceBtn">Data Science View</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <section class="panel">
+      <h3>Soldier / Scenario Loadout</h3>
+      <div class="sub">Concept: Soldier = Scenario. Weapons = AI plugin bundles. Gun parts = MCP/tool components.</div>
+      <label>Scenario Difficulty
+        <input id="difficulty" type="range" min="0" max="100" value="45" style="width:100%" />
+      </label>
+      <div class="slots" id="slots"></div>
+      <div class="scenario" id="scenarioSummary"></div>
+    </section>
+
+    <section class="panel">
+      <div id="gunsmithView" class="view active">
+        <h3>Gunsmith UI (Regular User)</h3>
+        <div class="sub">Swap attachments/skills and see instant power deltas.</div>
+        <div class="stats" id="statsGrid"></div>
+        <h4 style="margin-top:12px">Active Components</h4>
+        <div class="chipset" id="activeComponents"></div>
+      </div>
+
+      <div id="scienceView" class="view">
+        <h3>Data Science UI (Advanced)</h3>
+        <div class="sub">Ablation trace: removing one component causes peer compensation and top-level shifts.</div>
+        <canvas id="radar" width="540" height="300"></canvas>
+        <div class="legend">Metrics: Attack, Reliability, Coverage, Latency, Cost-Efficiency, Robustness.</div>
+        <h4 style="margin-top:12px">Ablation Table</h4>
+        <table>
+          <thead><tr><th>Layer</th><th>Node</th><th>ΔEffectiveness</th><th>Compensation Trigger</th></tr></thead>
+          <tbody id="ablationRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h3>Overall Score</h3>
+      <div id="overall" style="font-size:2rem; font-weight:800; color:var(--accent);">0</div>
+      <div class="bar"><span id="overallBar" style="width:0%"></span></div>
+      <p class="small" id="statusText"></p>
+      <h4 style="margin-top:12px">Hierarchy Map</h4>
+      <ul class="small">
+        <li>Scenario (Soldier)</li>
+        <li>Plugin Bundle (Weapons)</li>
+        <li>Skill Set (Gun)</li>
+        <li>MCP Server + CLI Tool (Parts)</li>
+        <li>Tool-level operations (sub-parts)</li>
+      </ul>
+    </aside>
+  </div>
+</div>
+
+<script>
+const metrics = ["attack","reliability","coverage","latency","efficiency","robustness"];
+const baseScenario = { attack: 30, reliability: 42, coverage: 25, latency: 55, efficiency: 50, robustness: 36 };
+
+const options = {
+  muzzle: [
+    { name:"No Muzzle / No Routing", mods:{ attack:0, reliability:0, coverage:0, latency:0, efficiency:0, robustness:0 }, ai:"No request router"},
+    { name:"Suppressor / Smart Router", mods:{ attack:-2, reliability:8, coverage:5, latency:-3, efficiency:4, robustness:5 }, ai:"Policy-based query router"},
+    { name:"Compensator / Aggressive Router", mods:{ attack:6, reliability:-4, coverage:2, latency:4, efficiency:-2, robustness:-3 }, ai:"Throughput-maximizing router"}
+  ],
+  magazine: [
+    { name:"Small Mag / Tiny Context", mods:{ attack:-6, reliability:4, coverage:-8, latency:10, efficiency:8, robustness:-4 }, ai:"4k context cap"},
+    { name:"Extended Mag / Long Context", mods:{ attack:8, reliability:3, coverage:10, latency:-6, efficiency:-4, robustness:5 }, ai:"128k context"},
+    { name:"Drum Mag / Retrieval Cache", mods:{ attack:10, reliability:-2, coverage:12, latency:-10, efficiency:-8, robustness:-3 }, ai:"Heavy cache + retrieval"}
+  ],
+  optic: [
+    { name:"Iron Sights / Plain Model", mods:{ attack:0, reliability:0, coverage:0, latency:0, efficiency:0, robustness:0 }, ai:"No tool introspection"},
+    { name:"4x Scope / Eval Tracing", mods:{ attack:2, reliability:10, coverage:6, latency:-4, efficiency:-1, robustness:8 }, ai:"Trace + confidence calibration"}
+  ],
+  underbarrel: [
+    { name:"No Underbarrel / No Helper", mods:{ attack:0, reliability:0, coverage:0, latency:0, efficiency:0, robustness:0 }, ai:"None"},
+    { name:"Launcher / Helper Scripts", mods:{ attack:7, reliability:4, coverage:8, latency:-5, efficiency:2, robustness:3 }, ai:"Mutable CLI helper scripts"}
+  ]
+};
+
+const weights = { attack:.25, reliability:.22, coverage:.18, latency:.12, efficiency:.11, robustness:.12 };
+const selected = { muzzle:1, magazine:1, optic:1, underbarrel:1 };
+
+const slots = document.getElementById('slots');
+Object.entries(options).forEach(([slot, list]) => {
+  const el = document.createElement('div');
+  el.className='slot';
+  el.innerHTML = `<strong>${slot.toUpperCase()}</strong><select id='${slot}'></select><div class='small' id='${slot}-ai'></div>`;
+  slots.appendChild(el);
+  const sel = el.querySelector('select');
+  list.forEach((op,i)=>{
+    const o = document.createElement('option'); o.value=i; o.textContent=op.name; sel.appendChild(o);
+  });
+  sel.value = selected[slot];
+  el.querySelector(`#${slot}-ai`).textContent = 'AI Mapping: '+list[selected[slot]].ai;
+  sel.addEventListener('change', e=>{
+    selected[slot]=+e.target.value;
+    el.querySelector(`#${slot}-ai`).textContent = 'AI Mapping: '+list[selected[slot]].ai;
+    render();
+  });
+});
+
+document.getElementById('difficulty').addEventListener('input', render);
+
+function compute() {
+  const result = {...baseScenario};
+  Object.entries(selected).forEach(([slot, idx]) => {
+    const mods = options[slot][idx].mods;
+    metrics.forEach(m => result[m]+=mods[m]);
+  });
+
+  // cascade effect: imbalance penalties/bonuses
+  if (result.coverage > 45 && result.latency < 45) { result.reliability -= 6; }
+  if (result.attack > 50 && result.robustness < 35) { result.reliability -= 5; }
+  if (result.coverage < 28) { result.attack -= 4; result.robustness -= 3; }
+
+  const difficulty = +document.getElementById('difficulty').value;
+  const difficultyPenalty = (difficulty - 40) * 0.35;
+
+  const normalized = {};
+  metrics.forEach(m => normalized[m] = Math.max(0, Math.min(100, result[m])));
+
+  const raw = Object.entries(weights).reduce((sum,[m,w]) => sum + normalized[m]*w, 0);
+  const overall = Math.max(0, Math.min(100, raw - difficultyPenalty));
+
+  return { normalized, overall, difficulty, difficultyPenalty };
+}
+
+function render() {
+  const c = compute();
+  const statsGrid = document.getElementById('statsGrid');
+  statsGrid.innerHTML = '';
+  metrics.forEach(m => {
+    const value = Math.round(c.normalized[m]);
+    const el = document.createElement('div');
+    el.className='stat';
+    el.innerHTML = `<strong>${m.toUpperCase()}</strong> <span style='float:right'>${value}</span><div class='bar'><span style='width:${value}%'></span></div>`;
+    statsGrid.appendChild(el);
+  });
+
+  document.getElementById('overall').textContent = c.overall.toFixed(1);
+  document.getElementById('overallBar').style.width = c.overall + '%';
+
+  const status = c.overall > 72 ? 'Ready for high-stakes deployment' : c.overall > 55 ? 'Viable, needs targeted tuning' : 'High risk: weak interaction profile';
+  document.getElementById('statusText').innerHTML = `Difficulty: <strong>${c.difficulty}</strong>. ${status}.`;
+
+  document.getElementById('scenarioSummary').innerHTML = `
+    <strong>Use-case narrative</strong><br>
+    In this scenario, removing a core MCP tool can force sibling tools to compensate. That compensation can raise latency and drop reliability, cascading upward to skill, plugin bundle, and full scenario score.
+  `;
+
+  const active = document.getElementById('activeComponents');
+  active.innerHTML='';
+  Object.entries(selected).forEach(([slot, idx]) => {
+    const chip = document.createElement('div');
+    chip.className='chip';
+    chip.textContent = `${slot}: ${options[slot][idx].name}`;
+    active.appendChild(chip);
+  });
+
+  renderAblation(c);
+  drawRadar(c.normalized);
+}
+
+function renderAblation(c) {
+  const rows = document.getElementById('ablationRows');
+  rows.innerHTML='';
+  Object.entries(selected).forEach(([slot, idx]) => {
+    const current = options[slot][idx];
+    const baseIdx = 0;
+    const baseOp = options[slot][baseIdx];
+    const delta = metrics.reduce((s,m)=>s + (current.mods[m]-baseOp.mods[m]) * weights[m], 0);
+    const comp = delta < 0 ? 'Peer tool overloaded' : delta > 0 ? 'Balanced with slight overhead' : 'No change';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${slot}</td><td>${current.name}</td><td class='${delta < 0 ? 'warn':'ok'}'>${delta.toFixed(2)}</td><td>${comp}</td>`;
+    rows.appendChild(tr);
+  });
+
+  const penaltyRow = document.createElement('tr');
+  penaltyRow.innerHTML = `<td>scenario</td><td>difficulty pressure</td><td class='warn'>-${c.difficultyPenalty.toFixed(2)}</td><td>Global stress amplification</td>`;
+  rows.appendChild(penaltyRow);
+}
+
+function drawRadar(data) {
+  const canvas = document.getElementById('radar');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const cx = w/2, cy = h/2, r = Math.min(w,h)*0.34;
+
+  for (let ring=1; ring<=5; ring++) {
+    ctx.beginPath();
+    for (let i=0;i<metrics.length;i++) {
+      const a = (Math.PI*2/metrics.length)*i - Math.PI/2;
+      const rr = r*ring/5;
+      const x = cx + Math.cos(a)*rr;
+      const y = cy + Math.sin(a)*rr;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = '#2d436b'; ctx.stroke();
+  }
+
+  metrics.forEach((m,i)=>{
+    const a = (Math.PI*2/metrics.length)*i - Math.PI/2;
+    const x = cx + Math.cos(a)*r;
+    const y = cy + Math.sin(a)*r;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.strokeStyle='#2d436b'; ctx.stroke();
+    ctx.fillStyle='#b7c7ef'; ctx.fillText(m, x*0.94 + cx*0.06 - 20, y*0.94 + cy*0.06);
+  });
+
+  ctx.beginPath();
+  metrics.forEach((m,i)=>{
+    const v = data[m]/100;
+    const a = (Math.PI*2/metrics.length)*i - Math.PI/2;
+    const x = cx + Math.cos(a)*r*v;
+    const y = cy + Math.sin(a)*r*v;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.closePath();
+  ctx.fillStyle='rgba(246,211,76,.24)'; ctx.fill();
+  ctx.strokeStyle='#f6d34c'; ctx.lineWidth=2; ctx.stroke();
+}
+
+const gunsmithBtn = document.getElementById('gunsmithBtn');
+const scienceBtn = document.getElementById('scienceBtn');
+gunsmithBtn.onclick = () => toggleView('gunsmith');
+scienceBtn.onclick = () => toggleView('science');
+function toggleView(v) {
+  const g = document.getElementById('gunsmithView');
+  const s = document.getElementById('scienceView');
+  const isG = v==='gunsmith';
+  g.classList.toggle('active', isG);
+  s.classList.toggle('active', !isG);
+  gunsmithBtn.classList.toggle('active', isG);
+  scienceBtn.classList.toggle('active', !isG);
+}
+
+render();
+</script>
+</body>
+</html>
